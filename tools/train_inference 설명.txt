@@ -1,0 +1,63 @@
+# train
+    1) data
+        end-to-end 모델인 만큼, 한 image에서 생성된 label은 image내 모든 텍스트의 bounding box / text 정보를 포함하고 있어야 함
+        전체 image를 아우르는 하나의 Label.txt를 같은 폴더 내 위치시키고, label 형태는 아래와 같음
+        (rec_002245.png\t[{"transcription": "텍스트", points": [[x1, y1], [x2, y2], [x3, y3], [x4, y4]], "difficult": false}, ...]\n
+         rec_002246.png\t[{"transcription": "문자", points": [[x1, y1], [x2, y2], [x3, y3], [x4, y4]], "difficult": false}, ...]\n)
+        > batch의 9개 성분 : images, tcl_maps, tcl_label_maps, border_maps, direction_maps, training_masks, label_list, pos_list, pos_mask
+          batch[1].shape
+          [2, 1, 128, 128]
+          batch[2].shape
+          [2, 1, 128, 128]
+          batch[3].shape
+          [2, 5, 128, 128]
+          batch[4].shape
+          [2, 3, 128, 128]
+          batch[5].shape
+          [2, 1, 128, 128]
+          batch[6].shape
+           [2, 100, 50, 1]
+          batch[7].shape
+          [2, 100, 64, 3]
+          batch[8].shape
+          [2, 100, 64, 1]
+    2) pretrain_model
+        준비된 best_accuracy 모델을 활용해 fine-tuning 수행
+        이는 configs/e2e/pet_receipts.yml 안에 적용돼있으며, Global > pretrained_model에서 적용되는 ./output/best_accuracy이 pre-trained model임
+    3) configs
+        configs/e2e/pet_receipts.yml 에 있는 내용을 통해 수정 가능
+        batch size, dictionary, output path, model architecture 등 수정 가능
+    4) 실행 :
+        python3 tools/train.py -c configs/e2e/pet_receipts.yml
+    5) 출력 : output > (실험명) 에 저장됨 (configs/e2e/pet_receipts.yml 에서 save_model_dir 설정)
+    6) 시각화 : tensorboard와 똑같은 기능을 가진 visualdl을 제공함, 위 출력 폴더에서 터미널 켜고 명령어 입력; visualdl --logdir=./
+
+================================================================================================================================================================================================================================
+# 한글화 진행중 특이사항
+    1) dictionary에 띄어쓰기가 없음 -> data load하는 부분에서 get_dict() function을 수정하여 ' ' 추가
+    2) 중간 출력물을 eval 할때 한번씩이라도 볼 수 있도록 구성 완료
+        korean dictionary에 맞게 모델 구조 변경하고, config 수정하여 한글화 완료
+        GT를 같이 출력하여 loss를 보고 수렴되는 것 확인하는 것 외에, 실제 결과물 동시에 확인
+    3) 한글화/spacebar 관련해서 수정해야 되는 부분
+        1. yml.loss.pad_num 부분에 dictionary 개수(1853) + spacebar(1) = 1854으로 넣어야 함
+            - dictionary의 len은 1854(index로는 1853), ctc에서 사용되는 pad(-)는 index상으로 1848
+        2. 띄어쓰기 : pg_process.py에서 get_dict()에 spacebar 추가/제거,
+           ppocr/utils/e2e_utils/extract_textpoint_slow.py, fast.py에서 get_dict() spacebar
+        3. e2e_pg_head.py에서 self.conv3 최종 channel수를 1854로 셋팅해야 함(중간 채널수는 점진적으로 설정)
+        > ctc_loss수렴이 인식 성능 높이는데 관건
+        > 1개 음절이 학습 안되는 원인 파악(pg_process.py 내) 및 수정 완료
+        > 1개 음절의 경우 bbox 또한 많은 학습을 통해 인식됨(초기에는 잘 잡히지 않음)
+    4) optimizer
+
+================================================================================================================================================================================================================================
+# inference
+    1) 실행 명령어
+       python tools/infer_e2e.py -c "configs/e2e/pet_receipts.yml" -o Global.infer_img="./dataset/rec_test" Global.pretrained_model="./output/best_accuracy" Global.load_static_weights=False
+       python tools/infer_e2e.py -c "configs/e2e/pet_receipts.yml" -o Global.infer_img="./dataset/rec_test" Global.pretrained_model="./output/latest" Global.load_static_weights=False
+       - image_dir에 폴더 지정시 폴더 내 전체 image에 대해 predict
+       - image 하나만 지정시 하나만 predict
+       - Global/save_model_dir 폴더에 결과물 image 생성, 텍스트 저장됨
+       - infer_e2e.py에서 main() function의 output_json가 최종 원하는 항목에 대한 추출된 결과물
+    2) 같은 300개 사진에 대해 predict/inference : 50sec
+
+================================================================================================================================================================================================================================

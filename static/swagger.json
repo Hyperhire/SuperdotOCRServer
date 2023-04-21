@@ -1,0 +1,44 @@
+{
+  "swagger": "2.0",
+  "basePath": "/",
+  "paths": {
+    "/OCR_img_upload": {
+      "post": {
+        "tags" : [ "영수증 OCR API" ],
+        "summary" : "Imports img file",
+        "description" : "upload image file.",
+        "operationId" : "uploadFile",
+        "consumes" : [ "multipart/form-data" ],
+        "produces" : [ "application/json" ],
+        "parameters" : [
+          {
+          "name" : "upload",
+          "in" : "formData",
+          "required" : true,
+          "type" : "file"
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Import successful"
+          },
+          "500" : {
+            "description" : "Error importing file"
+          }
+        }
+      }
+    }
+  },
+  "info": {
+        "title": "영수증 OCR",
+        "version": "0.1",
+        "description": "영수증 OCR",
+        "termsOfService": "/"
+    },
+    "produces": ["application/json"],
+    "consumes": ["multipart/form-data"],
+    "responses": {
+        "ParseError": {
+            "description": "Paramater Error"
+        }
+    }
+}

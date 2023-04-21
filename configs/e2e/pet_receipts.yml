@@ -1,0 +1,121 @@
+Global:
+  use_gpu: False
+  epoch_num: 1000
+  log_smooth_window: 20
+  print_batch_step: 1
+  save_model_dir: ./output/
+  save_epoch_step: 10
+  # evaluation is run every 0 iterationss after the 1000th iteration
+  eval_batch_step: [ 0, 1000 ]
+  cal_metric_during_train: False
+  pretrained_model: ./output/best_accuracy
+  checkpoints: #./output/pet_receipts/latest
+  save_inference_dir:
+  use_visualdl: True
+  infer_img: ./dataset/images
+  valid_set: partvgg # two mode: totaltext valid curved words, partvgg valid non-curved words, 원래 totaltext였음. 회전 제거
+  save_res_path: ./output/pet_receipts/label_result.txt
+  character_dict_path: ppocr/utils/dict/added_korean_dict.txt
+  character_type: korean
+  use_space_char: True
+  max_text_length: 50 # the max length in seq (음절 개수)
+  max_text_nums: 150 # the max seq nums in a pic (한 사진에서 나오는 bbox 개수)
+  tcl_len: 64 # fixed_point_num 역할
+  targets: ['사업자 등록번호', '병원명', '대표자', '날짜', '총금액', '결제일', '전화번호',
+            '청구일', '주소', '1.오늘청구', '사업장 소재지']
+  text_similar_threshold: 0.3
+
+
+Architecture:
+  model_type: e2e
+  algorithm: PGNet
+  Transform:
+  Backbone:
+    name: ResNet
+    layers: 50
+  Neck:
+    name: PGFPN
+  Head:
+    name: PGHead
+
+Loss:
+  name: PGLoss
+  tcl_bs: 64
+  max_text_length: 50 # the same as Global: max_text_length
+  max_text_nums: 150 # the same as Global：max_text_nums
+  pad_num: 1853 # the length of dict for pad
+
+Optimizer:
+  name: Adam
+  beta1: 0.9
+  beta2: 0.999
+  lr:
+    learning_rate: 0.00001
+    decay_epoch: 20
+    decay: 0.9
+  regularizer:
+    name: 'L2'
+    factor: 0
+
+
+PostProcess:
+  name: PGPostProcess
+  score_thresh: 0.5 # TCLmap에 대한 threshold, Bbox의 모양, 경계에는 영향을 주지 않음
+  mode: fast   # fast or slow two ways
+
+Metric:
+  name: E2EMetric
+  mode: A   # two ways for eval, A: label from txt,  B: label from gt_mat
+  gt_mat_dir:  ./train_data/total_text/gt  # the dir of gt_mat
+  character_dict_path: ppocr/utils/dict/added_korean_dict.txt
+  main_indicator: f_score_e2e
+
+Train:
+  dataset:
+    name: PGDataSet
+    data_dir: ./dataset/train
+    label_file_list: [./dataset/train/Label.txt]
+    ratio_list: [1.0]
+    transforms:
+      - DecodeImage: # load image
+          img_mode: BGR
+          channel_first: False
+      - E2ELabelEncodeTrain:
+      - PGProcessTrain:
+          batch_size: 2  # same as loader: batch_size_per_card
+          min_crop_size: 24
+          min_text_size: 1 # 최소 글자 개수
+          max_text_size: 512
+      - KeepKeys:
+          keep_keys: [ 'images', 'tcl_maps', 'tcl_label_maps', 'border_maps','direction_maps', 'training_masks', 'label_list', 'pos_list', 'pos_mask' ] # dataloader will return list in this order
+  loader:
+    shuffle: True
+    drop_last: True
+    batch_size_per_card: 2
+    num_workers: 10
+
+Eval:
+  dataset:
+    name: PGDataSet
+    data_dir: ./dataset/test
+    label_file_list: [./dataset/test/Label.txt]
+    transforms:
+      - DecodeImage: # load image
+          img_mode: RGB
+          channel_first: False
+      - E2ELabelEncodeTest:
+      - E2EResizeForTest:
+          max_side_len: 768
+      - NormalizeImage:
+          scale: 1./255.
+          mean: [ 0.485, 0.456, 0.406 ]
+          std: [ 0.229, 0.224, 0.225 ]
+          order: 'hwc'
+      - ToCHWImage:
+      - KeepKeys:
+          keep_keys: [ 'image', 'shape', 'polys', 'texts', 'ignore_tags', 'img_id']
+  loader:
+    shuffle: False
+    drop_last: False
+    batch_size_per_card: 1 # must be 1
+    num_workers: 16
